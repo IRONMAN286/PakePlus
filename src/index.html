@@ -1,22 +1,588 @@
 <!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <link rel="stylesheet" href="styles.css" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>PakePlus App</title>
-        <script type="module" src="/main.js" defer></script>
-    </head>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>黑马程序员IIC模拟器（多设备、电平 & 时序图）</title>
+  <style>
+    body {
+      font-family: "微软雅黑", sans-serif;
+      background-color: #f0f8ff;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+    }
+    #simulation {
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 20px;
+      background-color: #fff;
+      border: 2px solid #4682b4;
+      border-radius: 8px;
+    }
+    .button-group {
+      text-align: center;
+      margin: 20px 0;
+    }
+    button, select {
+      margin: 5px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      border-radius: 4px;
+      background-color: #4682b4;
+      color: #fff;
+    }
+    button:disabled, select:disabled {
+      background-color: #a9a9a9;
+      cursor: not-allowed;
+    }
+    #log {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #e6f2ff;
+      height: 200px;
+      overflow-y: auto;
+      border: 1px solid #4682b4;
+      border-radius: 4px;
+    }
+    .log-item {
+      margin-bottom: 8px;
+      padding: 5px;
+      border-bottom: 1px dashed #ccc;
+    }
+    #voltageDisplay {
+      margin: 20px auto;
+      max-width: 600px;
+      display: flex;
+      justify-content: space-around;
+    }
+    .line {
+      width: 45%;
+      text-align: center;
+      padding: 10px;
+      border: 2px solid #4682b4;
+      border-radius: 4px;
+      font-size: 18px;
+    }
+    .high {
+      background-color: #90ee90;
+    }
+    .low {
+      background-color: #ffcccb;
+    }
+    #waveformContainer {
+      margin-top: 30px;
+      text-align: center;
+      width: 800px;
+      margin-left: auto;
+      margin-right: auto;
+      overflow-x: auto;
+      border: 1px solid #4682b4;
+      background-color: #fff;
+    }
+    #waveformCanvas {
+      background-color: #fff;
+    }
+    /* 二进制位输入框样式 */
+    .bit-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .bit-boxes {
+      display: flex;
+      gap: 5px;
+    }
+    .bit-box {
+      width: 30px;
+      height: 30px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      border: 2px solid #4682b4;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.2s ease;
+    }
+    .bit-box[data-value="1"] {
+      background-color: #90ee90; /* 高电平为绿色 */
+      color: #006400;
+    }
+    .bit-box[data-value="0"] {
+      background-color: #ffcccb; /* 低电平为红色 */
+      color: #8b0000;
+    }
+    .bit-labels {
+      display: flex;
+      gap: 5px;
+      margin-top: 5px;
+    }
+    .bit-labels span {
+      width: 30px;
+      text-align: center;
+      font-size: 12px;
+      color: #4682b4;
+    }
+  </style>
+</head>
+<body>
+  <h1>黑马IIC游戏模拟器</h1>
+  <div id="simulation">
+    <p>
+      欢迎来到 IIC 传话游戏！在这个模拟中，“老师”代表主设备，多个从设备分别为小明（地址：0x10）、小红（地址：0x20）、小刚（地址：0x30）。
+      请先选择你要通信的从设备，再按照步骤点击按钮体验 IIC 的每一步过程，同时观察 SCL 与 SDA 的电平状态和时序图中的变化。
+    </p>
+    <div style="text-align: center;">
+      <label for="deviceSelect">选择设备：</label>
+      <select id="deviceSelect">
+        <option value="0x10">小明 (0x10)</option>
+        <option value="0x20">小红 (0x20)</option>
+        <option value="0x30">小刚 (0x30)</option>
+      </select>
+      <div style="margin-top: 10px;">
+        <label>数据传输内容（点击格子切换高低电平）：</label>
+        <div id="bitInputContainer" style="margin-top: 10px; display: flex; justify-content: center;">
+          <div class="bit-group">
+            <div class="bit-boxes">
+              <div class="bit-box" data-bit="7">0</div>
+              <div class="bit-box" data-bit="6">0</div>
+              <div class="bit-box" data-bit="5">0</div>
+              <div class="bit-box" data-bit="4">0</div>
+              <div class="bit-box" data-bit="3">0</div>
+              <div class="bit-box" data-bit="2">0</div>
+              <div class="bit-box" data-bit="1">1</div>
+              <div class="bit-box" data-bit="0">0</div>
+            </div>
+            <div class="bit-labels">
+              <span>7</span>
+              <span>6</span>
+              <span>5</span>
+              <span>4</span>
+              <span>3</span>
+              <span>2</span>
+              <span>1</span>
+              <span>0</span>
+            </div>
+            <div style="text-align: center; margin-top: 5px;">
+              <span>十六进制值: </span>
+              <span id="hexValue">0xA0</span>
+              <input type="hidden" id="dataInput" value="0xA0">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- 电平显示区域 -->
+    <div id="voltageDisplay">
+      <div id="sclDisplay" class="line high">SCL: HIGH</div>
+      <div id="sdaDisplay" class="line high">SDA: HIGH</div>
+    </div>
+    <div class="button-group">
+      <button id="btnStart">1. Start 信号</button>
+      <button id="btnAddress" disabled>2. 发送设备地址</button>
+      <button id="btnAck" disabled>3. ACK 应答</button>
+      <button id="btnData" disabled>4. 数据传输</button>
+      <button id="btnStop" disabled>5. Stop 信号</button>
+      <button id="btnStep" disabled>单步执行</button>
+      <button id="btnReset">重置</button>
+    </div>
+    
+    <div id="log">
+      <!-- 日志消息将显示在这里 -->
+    </div>
 
-    <body>
-        <main class="container">
-            <h1>Welcome to PakePlus</h1>
+    <!-- 时序图显示区域 -->
+    <div id="waveformContainer">
+      <h3>IIC 信号时序图</h3>
+      <canvas id="waveformCanvas" width="800" height="250"></canvas>
+    </div>
+  </div>
 
-            <form class="row" id="greet-form">
-                <input id="greet-input" placeholder="Enter a name..." />
-                <button type="submit">Greet</button>
-            </form>
-            <p id="greet-msg"></p>
-        </main>
-    </body>
+  <script>
+    // 获取各控件
+    const btnStart = document.getElementById("btnStart");
+    const btnAddress = document.getElementById("btnAddress");
+    const btnAck = document.getElementById("btnAck");
+    const btnData = document.getElementById("btnData");
+    const btnStop = document.getElementById("btnStop");
+    const btnStep = document.getElementById("btnStep");
+    const btnReset = document.getElementById("btnReset");
+    const deviceSelect = document.getElementById("deviceSelect");
+    const dataInput = document.getElementById("dataInput");
+    const dataInputError = document.getElementById("dataInputError");
+    const logArea = document.getElementById("log");
+    const sclDisplay = document.getElementById("sclDisplay");
+    const sdaDisplay = document.getElementById("sdaDisplay");
+    const canvas = document.getElementById("waveformCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // 全局时间轴变量（单位：像素）
+    let currentTime = 0;
+    const timeStepIncrement = 50;  // 每个事件后推进的时间（像素）
+    let sclEvents = [];  // 每个事件：{ t, state, marker }
+    let sdaEvents = [];  // 每个事件：{ t, state, marker }
+
+    // 当前步骤
+    let step = 0;
+
+    // 记录事件（可附带 marker 信息）
+    function recordEvent(lineId, state, marker) {
+      const event = { t: currentTime, state: state };
+      if(marker !== undefined) {
+        // 如果 marker 不是对象，则转成对象（默认黑色）
+        if(typeof marker !== "object") {
+          marker = { text: marker, color: "black" };
+        }
+        event.marker = marker;
+      }
+      if(lineId === "sclDisplay") {
+        sclEvents.push(event);
+      } else if(lineId === "sdaDisplay") {
+        sdaEvents.push(event);
+      }
+    }
+    // 推进时间轴，如果超出画布宽度则扩展画布
+    function advanceTime() {
+      currentTime += timeStepIncrement;
+      if (currentTime > canvas.width) {
+        canvas.width = currentTime + 50;  // 动态扩展画布宽度
+      }
+      drawWaveform();
+    }
+
+    // 更新电平显示，同时记录事件并推进时间
+    // marker 可选，用于标记事件（例如 {text:"ACK", color:"blue"}）
+    function updateLine(lineElement, state, marker) {
+      if(state === "HIGH") {
+        lineElement.textContent = lineElement.id.replace("Display", "").toUpperCase() + ": HIGH";
+        lineElement.classList.remove("low");
+        lineElement.classList.add("high");
+      } else {
+        lineElement.textContent = lineElement.id.replace("Display", "").toUpperCase() + ": LOW";
+        lineElement.classList.remove("high");
+        lineElement.classList.add("low");
+      }
+      recordEvent(lineElement.id, state, marker);
+      advanceTime();
+    }
+
+    // 绘制时序图
+    function drawWaveform() {
+      // 清除画布
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 设置绘图参数
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#000";
+      ctx.font = "14px Arial";
+      ctx.fillStyle = "#000";
+      // 绘制信号名称，SCL 在上，SDA 在下
+      ctx.fillText("SCL", 10, 40);
+      ctx.fillText("SDA", 10, 140);
+
+      // 定义 SCL 和 SDA 的高低电平 Y 坐标
+      const sclHighY = 30, sclLowY = 60;
+      const sdaHighY = 120, sdaLowY = 150;
+
+      function drawChannel(events, highY, lowY) {
+        if(events.length === 0) return;
+        ctx.beginPath();
+        // 初始点：从 x=0 开始，用第一个事件状态确定纵坐标
+        let initialY = events[0].state === "HIGH" ? highY : lowY;
+        ctx.moveTo(0, initialY);
+        let prevY = initialY;
+        events.forEach(event => {
+          // 绘制水平线延伸到当前事件时间点
+          ctx.lineTo(event.t, prevY);
+          // 垂直跳变到当前事件状态对应的 Y 坐标
+          let newY = event.state === "HIGH" ? highY : lowY;
+          ctx.lineTo(event.t, newY);
+          // 如果有 marker，则用 marker.color 绘制 marker.text
+          if(event.marker !== undefined) {
+            const savedFillStyle = ctx.fillStyle;
+            ctx.fillStyle = event.marker.color;
+            ctx.fillText(event.marker.text, event.t + 2, newY - 5);
+            ctx.fillStyle = savedFillStyle;
+          }
+          prevY = newY;
+        });
+        // 延伸到当前时间终点
+        ctx.lineTo(currentTime, prevY);
+        ctx.stroke();
+      }
+
+      // 绘制 SCL 与 SDA 波形
+      ctx.strokeStyle = "#000";
+      drawChannel(sclEvents, sclHighY, sclLowY);
+      drawChannel(sdaEvents, sdaHighY, sdaLowY);
+
+      // 绘制时间刻度线
+      ctx.strokeStyle = "#aaa";
+      for (let x = 0; x < currentTime; x += timeStepIncrement) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+    }
+
+    // 重置电平至初始高电平
+    function resetVoltage() {
+      updateLine(sclDisplay, "HIGH");
+      updateLine(sdaDisplay, "HIGH");
+    }
+
+    // 日志输出函数
+    function log(message) {
+      const p = document.createElement("div");
+      p.className = "log-item";
+      p.textContent = message;
+      logArea.appendChild(p);
+      logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    // 重置整个模拟
+    function reset() {
+      step = 0;
+      logArea.innerHTML = "";
+      currentTime = 0;
+      sclEvents = [];
+      sdaEvents = [];
+      // 重设画布宽度为初始宽度
+      canvas.width = 800;
+      drawWaveform();
+      resetVoltage();
+      btnStart.disabled = false;
+      btnAddress.disabled = true;
+      btnAck.disabled = true;
+      btnData.disabled = true;
+      btnStop.disabled = true;
+      btnStep.disabled = false;
+      deviceSelect.disabled = false;
+      log("系统已重置。请先选择设备，然后点击“Start 信号”开始。");
+    }
+
+    // 初始化页面
+    reset();
+
+    // 模拟 SCL 脉冲：SCL 从 HIGH 变为 LOW，再恢复为 HIGH
+    // 在上升沿时标注“Rising Edge”
+    function pulseSCL(callback) {
+      updateLine(sclDisplay, "LOW"); // 下降沿
+      setTimeout(() => {
+        updateLine(sclDisplay, "HIGH", {text:"Rising Edge", color:"purple"});
+        if(callback) callback();
+      }, 300);
+    }
+
+    // 按钮事件
+    btnStart.addEventListener("click", () => {
+      if(step === 0) {
+        log("老师说：'开始！' —— 发送 Start 信号。");
+        updateLine(sdaDisplay, "LOW"); // Start条件：SDA由HIGH降至LOW
+        log("SDA由HIGH降到LOW（Start条件），SCL保持HIGH。");
+        step = 1;
+        btnStart.disabled = true;
+        btnAddress.disabled = false;
+        btnStep.disabled = false;
+        deviceSelect.disabled = true;
+      }
+    });
+
+    btnAddress.addEventListener("click", () => {
+      if(step === 1) {
+        const deviceAddr = deviceSelect.value;
+        log(`老师说：'我要找设备地址 ${deviceAddr} 帮忙！' —— 发送设备地址。`);
+        // 将设备地址转换为 8 位二进制字符串
+        let addr = parseInt(deviceAddr, 16);
+        let binaryAddr = addr.toString(2).padStart(8, '0');
+        log("开始发送地址位: " + binaryAddr.split('').join(' '));
+        let bitIndex = 0;
+        // 将sendNextBit函数暴露到全局，以便单步执行按钮可以直接调用
+        window.sendNextBit = function() {
+          if(bitIndex < binaryAddr.length) {
+            let bit = binaryAddr[bitIndex];
+            if(bit === '1') {
+              updateLine(sdaDisplay, "HIGH", bit);
+              log(`发送第 ${bitIndex+1} 位：1`);
+            } else {
+              updateLine(sdaDisplay, "LOW", bit);
+              log(`发送第 ${bitIndex+1} 位：0`);
+            }
+            pulseSCL(() => {
+              bitIndex++;
+              // 只有在发送完所有位后才禁用单步执行按钮
+              if(bitIndex >= binaryAddr.length) {
+                btnStep.disabled = true;
+                step = 2;
+                btnAddress.disabled = true;
+                btnAck.disabled = false;
+                log("地址发送完毕，请等待从设备的ACK应答。");
+                // 清除全局引用
+                window.sendNextBit = null;
+              }
+            });
+          }
+        }
+        sendNextBit();
+      }
+    });
+
+    btnAck.addEventListener("click", () => {
+      if(step === 2) {
+        log("从设备应答：设备收到地址，SDA拉低表示ACK。");
+        // ACK时，标注蓝色“ACK”
+        updateLine(sdaDisplay, "LOW", {text:"ACK", color:"blue"});
+        pulseSCL(() => {
+          step = 3;
+          btnAck.disabled = true;
+          btnData.disabled = false;
+        });
+      }
+    });
+
+    // 初始化二进制位格子
+    const bitBoxes = document.querySelectorAll('.bit-box');
+    const hexValueDisplay = document.getElementById('hexValue');
+    
+    // 设置初始状态
+    function initBitBoxes() {
+      // 设置默认值 0xA0 (10100000)
+      const defaultBinary = '10100000';
+      
+      bitBoxes.forEach((box, index) => {
+        const bitValue = defaultBinary[index];
+        box.textContent = bitValue;
+        box.setAttribute('data-value', bitValue);
+        
+        // 添加点击事件
+        box.addEventListener('click', () => {
+          // 切换位值
+          const currentValue = box.getAttribute('data-value');
+          const newValue = currentValue === '1' ? '0' : '1';
+          
+          box.textContent = newValue;
+          box.setAttribute('data-value', newValue);
+          
+          // 更新十六进制值
+          updateHexValue();
+        });
+      });
+      
+      // 初始化十六进制值显示
+      updateHexValue();
+    }
+    
+    // 更新十六进制值
+    function updateHexValue() {
+      let binaryString = '';
+      bitBoxes.forEach(box => {
+        binaryString += box.getAttribute('data-value');
+      });
+      
+      const decimalValue = parseInt(binaryString, 2);
+      const hexValue = '0x' + decimalValue.toString(16).toUpperCase().padStart(2, '0');
+      
+      hexValueDisplay.textContent = hexValue;
+      dataInput.value = hexValue; // 更新隐藏的输入框值
+    }
+    
+    // 初始化二进制位格子
+    initBitBoxes();
+
+    btnData.addEventListener("click", () => {
+      if(step === 3) {
+        // 直接从隐藏输入框获取当前十六进制值
+        const value = dataInput.value.trim();
+        
+        log("老师传递信息：'请帮忙传送数据！' —— 发送数据。");
+        // 从输入框获取数据字节
+        let dataByte = parseInt(dataInput.value, 16);
+        let binaryData = dataByte.toString(2).padStart(8, '0');
+        log("开始发送数据位: " + binaryData.split('').join(' '));
+        let bitIndex = 0;
+        // 将sendDataBit函数暴露到全局，以便单步执行按钮可以直接调用
+        window.sendDataBit = function() {
+          if(bitIndex < binaryData.length) {
+            let bit = binaryData[bitIndex];
+            if(bit === '1') {
+              updateLine(sdaDisplay, "HIGH", bit);
+              log(`数据第 ${bitIndex+1} 位：1`);
+            } else {
+              updateLine(sdaDisplay, "LOW", bit);
+              log(`数据第 ${bitIndex+1} 位：0`);
+            }
+            pulseSCL(() => {
+              bitIndex++;
+              // 只有在发送完所有位后才禁用单步执行按钮
+              if(bitIndex >= binaryData.length) {
+                btnStep.disabled = true;
+                step = 4;
+                btnData.disabled = true;
+                btnStop.disabled = false;
+                log("数据传输完成。");
+                // 清除全局引用
+                window.sendDataBit = null;
+              } else {
+                // 确保在数据传输过程中单步执行按钮保持可用状态
+                btnStep.disabled = false;
+              }
+            });
+          }
+        }
+        sendDataBit();
+      }
+    });
+
+    btnStop.addEventListener("click", () => {
+      if(step === 4) {
+        log("老师说：'结束！' —— 发送 Stop 信号，结束传输。");
+        // STOP信号，标注红色“STOP”
+        updateLine(sclDisplay, "HIGH"); // 确保 SCL 为 HIGH
+        setTimeout(() => {
+          updateLine(sdaDisplay, "HIGH", {text:"STOP", color:"red"});
+          log("SDA由LOW升到HIGH（Stop条件），通信结束。");
+          step = 5;
+          btnStop.disabled = true;
+        }, 300);
+      }
+    });
+
+    btnStep.addEventListener("click", () => {
+      switch(step) {
+        case 0:
+          btnStart.click();
+          break;
+        case 1:
+          // 如果是地址发送阶段，直接调用sendNextBit函数
+          if(window.sendNextBit) {
+            window.sendNextBit();
+          } else {
+            btnAddress.click();
+          }
+          break;
+        case 2:
+          btnAck.click();
+          break;
+        case 3:
+          // 如果是数据发送阶段，直接调用sendDataBit函数
+          if(window.sendDataBit) {
+            window.sendDataBit();
+          } else {
+            btnData.click();
+          }
+          break;
+        case 4:
+          btnStop.click();
+          break;
+      }
+    });
+
+    btnReset.addEventListener("click", reset);
+  </script>
+</body>
 </html>
